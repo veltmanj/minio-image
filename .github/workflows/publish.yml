@@ -1,6 +1,6 @@
 name: Publish
 
-# Builds the image at the tag in the Dockerfile and publishes it to ghcr.io/veltmanj/minio.
+# Builds the image at the tag in the Dockerfile and publishes it to ghcr.io/veltmanj/minio-server.
 # The workflow writes each tag one time only: when the tag is already in the registry, the job stops
 # before the build. To publish a changed build, change MINIO_TAG or add a suffix to it.
 #
@@ -23,7 +23,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/veltmanj/minio
+  IMAGE: ghcr.io/veltmanj/minio-server
 
 jobs:
   publish:

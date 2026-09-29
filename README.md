@@ -1,7 +1,7 @@
 # minio-image
 
 This repository builds a MinIO container image from the upstream source
-and publishes it to `ghcr.io/veltmanj/minio`.
+and publishes it to `ghcr.io/veltmanj/minio-server`.
 
 MinIO removed its public images from Docker Hub and Quay, and its binary
 archive at `dl.min.io` answers 410. The GitHub repositories `minio/minio`
@@ -11,7 +11,7 @@ image uses those tags. Nobody changes the source.
 ## The image
 
 ```
-ghcr.io/veltmanj/minio:RELEASE.2023-09-04T19-57-37Z
+ghcr.io/veltmanj/minio-server:RELEASE.2023-09-04T19-57-37Z
 ```
 
 | Part | Upstream tag | Commit |
@@ -31,7 +31,7 @@ ghcr.io/veltmanj/minio:RELEASE.2023-09-04T19-57-37Z
 ```sh
 docker run -p 9000:9000 \
   -e MINIO_ROOT_USER=<user> -e MINIO_ROOT_PASSWORD=<password> \
-  ghcr.io/veltmanj/minio:RELEASE.2023-09-04T19-57-37Z server /data
+  ghcr.io/veltmanj/minio-server:RELEASE.2023-09-04T19-57-37Z server /data
 ```
 
 ## Publish
