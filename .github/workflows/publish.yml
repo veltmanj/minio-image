@@ -1,0 +1,119 @@
+name: Publish
+
+# Builds the image at the tag in the Dockerfile and publishes it to ghcr.io/veltmanj/minio.
+# The workflow writes each tag one time only: when the tag is already in the registry, the job stops
+# before the build. To publish a changed build, change MINIO_TAG or add a suffix to it.
+#
+# The image carries no build attestations (provenance and SBOM are off). A provenance record holds
+# the push event payload, and this image is public.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/publish.yml'
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/veltmanj/minio
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the tag
+        id: tag
+        run: |
+          tag=$(sed -n 's/^ARG MINIO_TAG=//p' Dockerfile)
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag guard
+        id: guard
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.ref }}" > /dev/null 2>&1; then
+            echo "::notice::${{ steps.tag.outputs.ref }} is already published. The workflow writes each tag one time only."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The arm64 runtime stage runs `apk add`, which needs an emulator. The Go compile does not.
+      - name: Set up QEMU
+        if: steps.guard.outputs.published == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: steps.guard.outputs.published == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build for the smoke test
+        if: steps.guard.outputs.published == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          sbom: false
+          tags: minio-smoke:local
+          cache-from: type=gha,scope=minio-image
+          cache-to: type=gha,scope=minio-image,mode=max
+
+      # The checks that consumers depend on: `server /data` behind the upstream entrypoint, the
+      # health endpoint, `mc ready local` (a common compose health check), and the release stamp.
+      - name: Smoke test
+        if: steps.guard.outputs.published == 'false'
+        run: |
+          docker run --rm minio-smoke:local minio --version | tee /dev/stderr | grep -F "${{ steps.tag.outputs.tag }}"
+          docker run -d --name minio-smoke -p 9000:9000 \
+            -e MINIO_ROOT_USER=smoke-user -e MINIO_ROOT_PASSWORD=smoke-secret \
+            minio-smoke:local server /data
+          for attempt in $(seq 1 30); do
+            curl -fsS http://localhost:9000/minio/health/live && break
+            sleep 1
+          done
+          curl -fsS http://localhost:9000/minio/health/live
+          docker exec minio-smoke mc ready local
+          docker rm -f minio-smoke
+
+      - name: Build and push both architectures
+        id: push
+        if: steps.guard.outputs.published == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.tag.outputs.ref }}
+          cache-from: type=gha,scope=minio-image
+          cache-to: type=gha,scope=minio-image,mode=max
+
+      - name: Summary
+        if: steps.guard.outputs.published == 'false'
+        run: |
+          echo "Published \`${{ steps.tag.outputs.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Digest: \`${{ steps.push.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
