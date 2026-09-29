@@ -5,7 +5,9 @@ name: Publish
 # before the build. To publish a changed build, change MINIO_TAG or add a suffix to it.
 #
 # The image carries no build attestations (provenance and SBOM are off). A provenance record holds
-# the push event payload, and this image is public.
+# the push event payload, and this image is public. For the same reason the build metadata, the
+# build record artifact, and the build summary carry no provenance: the job log and the artifacts
+# of a public repository are public too.
 on:
   workflow_dispatch:
   push:
@@ -24,6 +26,9 @@ permissions:
 
 env:
   IMAGE: ghcr.io/veltmanj/minio-server
+  BUILDX_METADATA_PROVENANCE: disabled
+  DOCKER_BUILD_RECORD_UPLOAD: false
+  DOCKER_BUILD_SUMMARY: false
 
 jobs:
   publish:
